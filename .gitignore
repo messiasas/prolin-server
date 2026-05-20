@@ -1,0 +1,10 @@
+.metadata/
+Release/
+Debug/
+*.o
+*.d
+*.su
+*.elf
+*.map
+*.log
+.settings/

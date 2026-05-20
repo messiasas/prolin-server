@@ -1,0 +1,8 @@
+[app]
+id=MAINAPP
+name=server-prolin1.1
+bin=server-prolin1.1
+artwork=
+desc=PAX POS Application
+vender=PAX
+version=2.0
