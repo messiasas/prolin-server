@@ -27,6 +27,7 @@
 #include <netinet/in.h>
 
 volatile int server_running = 1;
+int ip_y = 0;
 
 #define SERVER_PORT 8080
 
@@ -187,8 +188,18 @@ int mostrarIP(void)
 }
 
 
-void *clientThread(void *arg)
+int *clientThread(void *arg)
 {
+    XuiColor colorWhite = {0xFF,0xFF,0xFF,0xFF};
+    XuiColor colorBlue = {0xFF,0x00,0x00,0xFF};
+    XuiColor colorGray = {0xBE,0xBE,0xBE,0xFF};
+    XuiColor colorRed = {0x00,0x00,0xFF,0xFF};
+    XuiColor colorBlack = {0x00,0x00,0x00,0xFF};
+    XuiColor colorGreen = {0x00, 0xFF, 0x00, 0xFF};
+
+    XuiFont *font;
+    font = XuiCreateFont("/usr/font/paxfont.ttf",0,0);
+
     int client_fd = *(int *)arg;
 
     free(arg);
@@ -201,7 +212,7 @@ void *clientThread(void *arg)
     {
         memset(buffer, 0, sizeof(buffer));
 
-        int bytes = recv(client_fd, buffer, sizeof(buffer), 0);
+        int bytes = recv(client_fd,buffer,sizeof(buffer),0);
 
         if (bytes <= 0)
         {
@@ -209,17 +220,108 @@ void *clientThread(void *arg)
             break;
         }
 
+        XuiWindow *layMSG =XuiCreateCanvas(XuiRootCanvas(),200,ip_y + 200,270,30);
+        XuiCanvasDrawRect(layMSG,0,0,270,30,colorGray,0,1);
+        XuiShowWindow(layMSG,1,0);
+
         OsLog(LOG_DEBUG, "Recebido: %s", buffer);
 
-        // eco simples
-        send(client_fd, buffer, bytes, 0);
+        if (strncmp(buffer, "GET ", 4) == 0)
+        {
+            char filename[256];
+
+            char cwd[512];
+
+            getcwd(cwd, sizeof(cwd));
+
+            OsLog(LOG_DEBUG, "CWD: %s", cwd);
+
+            memset(filename, 0, sizeof(filename));
+            sscanf(buffer,"GET %255s",filename);
+
+            filename[strcspn(filename, "\r\n")] = 0;
+
+            OsLog(LOG_DEBUG,"Arquivo solicitado: %s",filename);
+
+            char filepath[512];
+            snprintf( filepath, sizeof(filepath), "./res/storage/so/%s",filename);
+
+            OsLog(LOG_DEBUG,"Abrindo: %s",filepath);
+
+            // ==================================
+            // ABRIR ZIP
+            // ==================================
+            OsLog(LOG_DEBUG, "PATH FINAL: %s", filepath);
+
+            FILE *fp = fopen(filepath, "rb");
+
+            if (fp == NULL)
+            {
+                OsLog(LOG_DEBUG, "Arquivo nao encontrado");
+
+                XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_BOLD,colorRed, "NOT FOUND");
+
+                send(client_fd,"ERROR FILE_NOT_FOUND", 21,0);
+                continue;
+            }
+
+            // ==================================
+            // TAMANHO ARQUIVO
+            // ==================================
+
+            fseek(fp, 0, SEEK_END);
+
+            long filesize = ftell(fp);
+
+            rewind(fp);
+
+            // ==================================
+            // ENVIAR HEADER
+            // ==================================
+
+            char header[128];
+
+            XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack, "STARTED");
+
+            sprintf(header,"OK\nSIZE %ld\n", filesize);
+
+            send(client_fd,header,strlen(header),0);
+
+            OsLog(LOG_DEBUG,"Enviando arquivo (%ld bytes)",filesize);
+
+
+            char file_buffer[1024];
+
+            int read_bytes;
+
+
+            while (
+                (read_bytes = fread( file_buffer, 1, sizeof(file_buffer), fp)) > 0)
+            {
+                send( client_fd,file_buffer,read_bytes,0 );
+            }
+
+            fclose(fp);
+            OsLog(LOG_DEBUG, "Arquivo enviado");
+
+            XuiCanvasDrawText(layMSG,130,0,25,font,XUI_TEXT_BOLD,colorBlue, "SO SENT");
+            return RET_OK;
+        }
+        else
+        {
+            send(
+                client_fd,
+                "ERROR UNKNOWN_COMMAND\n",
+                22,
+                0
+            );
+            return -1;
+        }
     }
 
     close(client_fd);
-
     return NULL;
 }
-
 
 
 int listenConnect()
@@ -356,61 +458,38 @@ void *serverThread(void *arg)
 }
 
 
-int HelloWorld(void)
+int Server(void)
 {
-    // =====================================================
-    // COLORS
-    // =====================================================
 
     XuiColor colorWhite = {0xFF,0xFF,0xFF,0xFF};
-
     XuiColor colorBlue = {0xFF,0x00,0x00,0xFF};
-
     XuiColor colorGray = {0xBE,0xBE,0xBE,0xFF};
-
     XuiColor colorRed = {0x00,0x00,0xFF,0xFF};
-
     XuiColor colorBlack = {0x00,0x00,0x00,0xFF};
-
-    // =====================================================
-    // FONT
-    // =====================================================
+    XuiColor colorGreen = {0x00, 0xFF, 0x00, 0xFF};
 
     XuiFont *font;
-
-    font = XuiCreateFont(
-        "/usr/font/paxfont.ttf",
-        0,
-        0
-    );
-
-    // =====================================================
-    // LAYOUT
-    // =====================================================
+    font = XuiCreateFont("/usr/font/paxfont.ttf",0,0);
 
     XuiWindow *layUp = XuiCreateCanvas(XuiRootCanvas(),0,0,480,200);
-
     XuiCanvasDrawRect(layUp,0,0,480,200,colorBlue,0,1);
 
     XuiWindow *layDown =XuiCreateCanvas(XuiRootCanvas(),0,200,480,700);
-
     XuiCanvasDrawRect(layDown,0,0,480,700,colorGray,0,1);
-
-    XuiShowWindow(layUp,1,0);
-
-    XuiShowWindow(layDown,1,0);
 
     XuiWindow *layMSG = XuiCreateCanvas(layUp,200,100,150,50);
     XuiCanvasDrawRect(layMSG,0,0,480,200,colorBlue,0,1);
-    XuiCanvasDrawText(layMSG,0,0,30,font,XUI_TEXT_NORMAL,colorWhite,"AWAIT");
+
+    XuiShowWindow(layUp,1,0);
+    XuiShowWindow(layDown,1,0);
     XuiShowWindow(layMSG,1,0);
 
     // =====================================================
     // WIFI
     // =====================================================
+    XuiCanvasDrawText(layMSG,0,0,30,font,XUI_TEXT_NORMAL,colorWhite,"AWAIT");
 
-    short ret = startWifi("WM","123456789");
-
+    short ret = startWifi("AMAZONAS INOVARE 5.0G","987654321");
     mostrarIP();
 
     if (ret < 0)
@@ -425,7 +504,7 @@ int HelloWorld(void)
     XuiCanvasDrawText(layUp,155,10,30,font,XUI_TEXT_NORMAL,colorWhite,ip);
 
     // =====================================================
-    // STATUS WINDOW
+    // FIELD CONNECTION INFORMATION IP
     // =====================================================
 
     XuiWindow *layConnect =XuiCreateCanvas(layDown,0,0,230,450);
@@ -451,21 +530,13 @@ int HelloWorld(void)
     if (server_fd < 0)
     {
         OsLog(LOG_DEBUG,"Erro socket");
-
-        return -1;
+        //return -1;
     }
-
-    // =====================================================
-    // REUSEADDR
-    // =====================================================
 
     int opt = 1;
 
+    // Allows use the port again even after turning off the server
     setsockopt(server_fd,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
-
-    // =====================================================
-    // SERVER CONFIG
-    // =====================================================
 
     memset(
         &server_addr,
@@ -474,14 +545,8 @@ int HelloWorld(void)
     );
 
     server_addr.sin_family = AF_INET;
-
     server_addr.sin_addr.s_addr = INADDR_ANY;
-
     server_addr.sin_port = htons(SERVER_PORT);
-
-    // =====================================================
-    // BIND
-    // =====================================================
 
     if (bind(
             server_fd,
@@ -496,16 +561,10 @@ int HelloWorld(void)
         return -1;
     }
 
-    // =====================================================
-    // LISTEN
-    // =====================================================
-
     if (listen(server_fd,15) < 0)
     {
         OsLog(LOG_DEBUG,"Erro listen");
-
         close(server_fd);
-
         return -1;
     }
 
@@ -519,16 +578,12 @@ int HelloWorld(void)
 
     socklen_t client_len;
 
-    int ip_y = 0;
+    //int ip_y = 0;
 
     XuiCanvasDrawText(layConnect,0,0,25,font,XUI_TEXT_NORMAL,colorBlack, "IP connect:");
 
     while (server_running)
     {
-        // =============================================
-        // TECLADO
-        // =============================================
-
         if (XuiHasKey())
         {
             int key = XuiGetKey();
@@ -536,39 +591,28 @@ int HelloWorld(void)
             if (key == XUI_KEYCANCEL)
             {
                 server_running = 0;
-
                 break;
             }
         }
 
-        // =============================================
-        // SELECT
-        // =============================================
-
-        fd_set readfds;
+        fd_set readfds; // Read files like a number
 
         FD_ZERO(&readfds);
 
-        FD_SET(server_fd,&readfds);
-
+        FD_SET(server_fd,&readfds); // readfds will monitoring the server_fd
+									// In this case, it will monitoring new connections
         struct timeval timeout;
 
         timeout.tv_sec = 0;
-
-        timeout.tv_usec = 100000;
+        timeout.tv_usec = 100000; // select() await at most 1 second
 
         int activity = select(server_fd + 1, &readfds, NULL,NULL,&timeout);
-
-        // =============================================
-        // CLIENT CONNECT
-        // =============================================
 
         if (activity > 0)
         {
             client_len = sizeof(client_addr);
 
-            int *client_fd =
-                malloc(sizeof(int));
+            int *client_fd = malloc(sizeof(int));
 
             *client_fd = accept(
                 server_fd,
@@ -579,29 +623,22 @@ int HelloWorld(void)
             if (*client_fd >= 0)
             {
                 char *client_ip =inet_ntoa(client_addr.sin_addr);
-
-                OsLog(LOG_DEBUG,"Cliente: %s",client_ip);
-
-                // =====================================
-                // UI UPDATE
-                // =====================================
-
-                //XuiClearArea(layConnect,0,0, 270,25);
-
-                //XuiCanvasDrawRect(layConnect,0,0,270,25,colorBlue,0,1);
+                OsLog(LOG_DEBUG,"Customer: %s",client_ip);
 
                 XuiCanvasDrawText(layConnect,0,ip_y+35,25,font,XUI_TEXT_NORMAL,colorBlack, client_ip);
-                ip_y += 35;
 
-                // =====================================
-                // THREAD CLIENTE
-                // =====================================
 
                 pthread_t thread_id;
+                int retconnect = pthread_create(&thread_id,NULL,clientThread,client_fd);
 
-                pthread_create(&thread_id,NULL,clientThread,client_fd);
+               /* if( retconnect < 0 ){
+                	XuiCanvasDrawText(layConnect,200,ip_y+35,25,font,XUI_TEXT_NORMAL,colorRed, "FAILED");
+                }else{
+                	XuiCanvasDrawText(layConnect,200,ip_y+35,25,font,XUI_TEXT_NORMAL,colorGreen, "STARTED");
+                }*/
 
                 pthread_detach(thread_id);
+                ip_y += 35;
             }
             else
             {
@@ -612,22 +649,17 @@ int HelloWorld(void)
         usleep(10000);
     }
 
-    // =====================================================
-    // CLOSE SERVER
-    // =====================================================
-
     close(server_fd);
-
     return 0;
 }
 
 
 int main(int argc, char **argv)
 {
-	OsLogSetTag("[  SFM  ]");
+	OsLogSetTag("[  PSF  ]");
     CrashReportInit();
     GuiInit(18);
-    HelloWorld();
+    Server();
     GuiDeinit();
     return 0;
 }
