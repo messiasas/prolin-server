@@ -26,6 +26,9 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 
+#include <dirent.h>
+#include <sys/stat.h>
+
 volatile int server_running = 1;
 int ip_y = 0;
 
@@ -188,6 +191,63 @@ int mostrarIP(void)
 }
 
 
+
+int getFirstFile(char *folder, char *outputPath, size_t outputSize)
+{
+    DIR *dir;
+
+    struct dirent *entry;
+
+    dir = opendir(folder);
+
+    if (dir == NULL)
+    {
+        return 0;
+    }
+
+    while ((entry = readdir(dir)) != NULL)
+    {
+        // Ignora "." e ".."
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0)
+        {
+            continue;
+        }
+
+        // Monta caminho completo
+        snprintf(
+            outputPath,
+            outputSize,
+            "%s/%s",
+            folder,
+            entry->d_name
+        );
+
+        // Verifica se é arquivo normal
+        struct stat st;
+
+        if (stat(outputPath, &st) == 0)
+        {
+            if (S_ISREG(st.st_mode))
+            {
+                closedir(dir);
+                return 1;
+            }
+        }
+    }
+
+    closedir(dir);
+
+    return 0;
+}
+
+
+
+
+
+
+
+
 int *clientThread(void *arg)
 {
     XuiColor colorWhite = {0xFF,0xFF,0xFF,0xFF};
@@ -195,16 +255,13 @@ int *clientThread(void *arg)
     XuiColor colorGray = {0xBE,0xBE,0xBE,0xFF};
     XuiColor colorRed = {0x00,0x00,0xFF,0xFF};
     XuiColor colorBlack = {0x00,0x00,0x00,0xFF};
-    XuiColor colorGreen = {0x00, 0xFF, 0x00, 0xFF};
+    XuiColor colorGreen = {0x00,0xFF,0x00,0xFF};
 
     XuiFont *font;
     font = XuiCreateFont("/usr/font/paxfont.ttf",0,0);
 
     int client_fd = *(int *)arg;
-
     free(arg);
-
-    OsLog(LOG_DEBUG, "Thread cliente iniciada");
 
     char buffer[1024];
 
@@ -212,7 +269,7 @@ int *clientThread(void *arg)
     {
         memset(buffer, 0, sizeof(buffer));
 
-        int bytes = recv(client_fd,buffer,sizeof(buffer),0);
+        int bytes = recv(client_fd, buffer, sizeof(buffer)-1, 0);
 
         if (bytes <= 0)
         {
@@ -220,109 +277,139 @@ int *clientThread(void *arg)
             break;
         }
 
-        XuiWindow *layMSG =XuiCreateCanvas(XuiRootCanvas(),200,ip_y + 200,270,30);
-        XuiCanvasDrawRect(layMSG,0,0,270,30,colorGray,0,1);
-        XuiShowWindow(layMSG,1,0);
+        buffer[bytes] = '\0';
 
         OsLog(LOG_DEBUG, "Recebido: %s", buffer);
 
-        if (strncmp(buffer, "GET ", 4) == 0)
+        // ==========================================
+        // CRIAR JANELA STATUS
+        // ==========================================
+
+        XuiWindow *layMSG = XuiCreateCanvas( XuiRootCanvas(), 200,ip_y + 200,270,30);
+
+        XuiCanvasDrawRect(layMSG, 0, 0, 270,30,colorGray,0,1);
+        XuiShowWindow(layMSG,1,0);
+
+        // ==========================================
+        // PEGAR SOMENTE O COMANDO
+        // ==========================================
+
+        char command[32];
+
+        memset(command,0,sizeof(command));
+
+        sscanf(buffer, "%31s", command);
+
+        command[strcspn(command, "\r\n")] = 0;
+
+        OsLog(LOG_DEBUG,"Comando: %s",command);
+
+        // ==========================================
+        // DEFINIR PASTA BASE
+        // ==========================================
+
+        char filepath[512];
+
+        if (strcmp(command, "GET_SO") == 0)
         {
-            char filename[256];
+			if (!getFirstFile("./res/storage/so",filepath,sizeof(filepath)))
+			{
+				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
 
-            char cwd[512];
+				send(client_fd,"FILE_NOT_FOUND",23,0);
+				continue;
+			}
 
-            getcwd(cwd, sizeof(cwd));
-
-            OsLog(LOG_DEBUG, "CWD: %s", cwd);
-
-            memset(filename, 0, sizeof(filename));
-            sscanf(buffer,"GET %255s",filename);
-
-            filename[strcspn(filename, "\r\n")] = 0;
-
-            OsLog(LOG_DEBUG,"Arquivo solicitado: %s",filename);
-
-            char filepath[512];
-            snprintf( filepath, sizeof(filepath), "./res/storage/so/%s",filename);
-
-            OsLog(LOG_DEBUG,"Abrindo: %s",filepath);
-
-            // ==================================
-            // ABRIR ZIP
-            // ==================================
-            OsLog(LOG_DEBUG, "PATH FINAL: %s", filepath);
-
-            FILE *fp = fopen(filepath, "rb");
-
-            if (fp == NULL)
-            {
-                OsLog(LOG_DEBUG, "Arquivo nao encontrado");
-
-                XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_BOLD,colorRed, "NOT FOUND");
-
-                send(client_fd,"ERROR FILE_NOT_FOUND", 21,0);
-                continue;
-            }
-
-            // ==================================
-            // TAMANHO ARQUIVO
-            // ==================================
-
-            fseek(fp, 0, SEEK_END);
-
-            long filesize = ftell(fp);
-
-            rewind(fp);
-
-            // ==================================
-            // ENVIAR HEADER
-            // ==================================
-
-            char header[128];
-
-            XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack, "STARTED");
-
-            sprintf(header,"OK\nSIZE %ld\n", filesize);
-
-            send(client_fd,header,strlen(header),0);
-
-            OsLog(LOG_DEBUG,"Enviando arquivo (%ld bytes)",filesize);
-
-
-            char file_buffer[1024];
-
-            int read_bytes;
-
-
-            while (
-                (read_bytes = fread( file_buffer, 1, sizeof(file_buffer), fp)) > 0)
-            {
-                send( client_fd,file_buffer,read_bytes,0 );
-            }
-
-            fclose(fp);
-            OsLog(LOG_DEBUG, "Arquivo enviado");
-
-            XuiCanvasDrawText(layMSG,130,0,25,font,XUI_TEXT_BOLD,colorBlue, "SO SENT");
-            return RET_OK;
+			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");
         }
+        else if (strcmp(command, "GET_FWP") == 0)
+        {
+			if (!getFirstFile("./res/storage/fwp",filepath,sizeof(filepath)))
+			{
+				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
+
+				send(client_fd,"FWP_NOT_FOUND",23,0);
+				continue;
+			}
+
+			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING FWP");
+        }
+        else if (strcmp(command, "GET_APP") == 0)
+        {
+			/*if (!getFirstFile("./res/storage/app",filepath,sizeof(filepath)))
+			{
+				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
+
+				send(client_fd,"FILE_NOT_FOUND",23,0);
+				continue;
+			}
+
+			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");*/
+        }
+
         else
         {
-            send(
-                client_fd,
-                "ERROR UNKNOWN_COMMAND\n",
-                22,
-                0
-            );
-            return -1;
+            OsLog(LOG_DEBUG,"Comando desconhecido");
+            XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorRed,"COMMAND ERROR");
+            continue;
         }
+
+        OsLog(LOG_DEBUG,"Abrindo: %s",filepath);
+
+        FILE *fp = fopen(filepath, "rb");
+
+        if (fp == NULL)
+        {
+            OsLog(LOG_DEBUG,"Arquivo nao encontrado");
+
+            XuiCanvasDrawText(layMSG,130, 0,25,font,XUI_TEXT_BOLD,colorRed,"NOT FOUND");
+
+            send(client_fd,"ERROR FILE_NOT_FOUND\n",23,0);
+            continue;
+        }
+
+        // ==========================================
+        // TAMANHO ARQUIVO
+        // ==========================================
+
+        fseek(fp, 0, SEEK_END);
+
+        long filesize = ftell(fp);
+
+        rewind(fp);
+
+        char header[128];
+
+        sprintf(header,"OK\nSIZE %ld\n",filesize);
+
+        send(client_fd,header, strlen(header),0);
+
+        OsLog(LOG_DEBUG,"Enviando arquivo (%ld bytes)",filesize);
+
+        // ==========================================
+        // ENVIAR ARQUIVO
+        // ==========================================
+
+        char file_buffer[1024];
+
+        int read_bytes;
+
+        while (
+            (read_bytes =fread(file_buffer,1, sizeof(file_buffer),fp) ) > 0
+        )
+        {
+            send(client_fd,file_buffer,read_bytes,0);
+        }
+
+        fclose(fp);
+
+        OsLog(LOG_DEBUG, "Arquivo enviado");
+        XuiCanvasDrawText(layMSG,160,0,25,font,XUI_TEXT_BOLD,colorBlue,"SENT!");
     }
 
     close(client_fd);
     return NULL;
 }
-
 
 int listenConnect()
 {
@@ -489,7 +576,7 @@ int Server(void)
     // =====================================================
     XuiCanvasDrawText(layMSG,0,0,30,font,XUI_TEXT_NORMAL,colorWhite,"AWAIT");
 
-    short ret = startWifi("AMAZONAS INOVARE 5.0G","987654321");
+    short ret = startWifi("AMAZONAS INOVARE 2.4G","987654321");
     mostrarIP();
 
     if (ret < 0)
