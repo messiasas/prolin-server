@@ -243,11 +243,6 @@ int getFirstFile(char *folder, char *outputPath, size_t outputSize)
 
 
 
-
-
-
-
-
 int *clientThread(void *arg)
 {
     XuiColor colorWhite = {0xFF,0xFF,0xFF,0xFF};
@@ -334,7 +329,19 @@ int *clientThread(void *arg)
 
 			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING FWP");
         }
-        else if (strcmp(command, "GET_APP") == 0)
+        else if (strcmp(command, "GET_BOOT") == 0)
+        {
+			/*if (!getFirstFile("./res/storage/boot",filepath,sizeof(filepath)))
+			{
+				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
+
+				send(client_fd,"FILE_NOT_FOUND",23,0);
+				continue;
+			}
+
+			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");*/
+
+        }        else if (strcmp(command, "GET_APP") == 0)
         {
 			/*if (!getFirstFile("./res/storage/app",filepath,sizeof(filepath)))
 			{
@@ -574,6 +581,7 @@ int Server(void)
     // =====================================================
     // WIFI
     // =====================================================
+    XuiCanvasDrawText(layUp,10,10,30,font,XUI_TEXT_BOLD,colorGray,"MSP");
     XuiCanvasDrawText(layMSG,0,0,30,font,XUI_TEXT_NORMAL,colorWhite,"AWAIT");
 
     short ret = startWifi("AMAZONAS INOVARE 2.4G","987654321");
