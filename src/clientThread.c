@@ -8,7 +8,7 @@
 #include <osal.h>
 #include <xui.h>
 
-int ip_y = 0;
+int ip_y = 35;
 
 int *clientThread(void *arg)
 {
@@ -51,6 +51,8 @@ int *clientThread(void *arg)
 
         XuiCanvasDrawRect(layMSG, 0, 0, 270,30,colorGray,0,1);
         XuiShowWindow(layMSG,1,0);
+
+        ip_y += 35;
 
         // ==========================================
         // PEGAR SOMENTE O COMANDO

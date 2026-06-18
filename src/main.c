@@ -182,7 +182,9 @@ int Server(void)
     XuiCanvasDrawText(layUp,10,10,30,font,XUI_TEXT_BOLD,colorGray,"MSP");
     XuiCanvasDrawText(layMSG,0,0,30,font,XUI_TEXT_NORMAL,colorWhite,"AWAIT");
 
-    short ret = startWifi("AMAZONAS INOVARE 2.4G","987654321");
+   // short ret = startWifi("AMAZONAS INOVARE 2.4G","987654321");
+    short ret = startWifi("WM","123456789");
+
     mostrarIP();
 
     if (ret < 0)
