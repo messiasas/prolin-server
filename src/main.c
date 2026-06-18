@@ -18,6 +18,9 @@
 #include <osal.h>
 #include <xui.h>
 
+#include "wifi.h"
+#include "clientThread.h"
+
 #include "curl/curl.h"
 #include <arpa/inet.h>
 
@@ -30,7 +33,7 @@
 #include <sys/stat.h>
 
 volatile int server_running = 1;
-int ip_y = 0;
+//int ip_y = 0;
 
 #define SERVER_PORT 8080
 
@@ -80,396 +83,6 @@ static void CrashReportInit(void)
     signal(SIGSTKFLT, OsSaveCrashReport);
     signal(SIGPIPE,   OsSaveCrashReport);
 }
-
-char ip[32] = {0};
-
-int startWifi(const char ssid[], const char password[]){
-
-	int i;
-	int route;
-
-	ST_WifiApInfo *Aps;
-	ST_WifiApSet ApSet;
-
-	OsLog(LOG_DEBUG, "Abrindo modulo WiFi...");
-
-	int ret = OsWifiOpen();
-	if (ret != RET_OK)
-	{
-		OsLog(LOG_DEBUG, "Erro OsWifiOpen = %d", ret);
-	}
-
-	OsLog(LOG_DEBUG, "Escaneando redes...");
-
-	int netQuantity = OsWifiScan(&Aps);
-
-	if (netQuantity <= 0)
-	{
-		OsLog(LOG_DEBUG, "Nenhuma rede encontrada");
-	}
-	char text[20] = {0};
-	sprintf(text, "%s", ssid);
-
-	OsLog(LOG_DEBUG, "Procurando rede: %s", ssid);
-
-	for (i = 0; i < netQuantity; i++)
-	{
-		if (strcmp(Aps[i].Essid, ssid) == 0)
-		{
-			OsLog(LOG_DEBUG, "Rede encontrada, conectando...");
-
-			memset(&ApSet, 0, sizeof(ApSet));
-
-			strcpy(ApSet.Essid, Aps[i].Essid);
-			strcpy(ApSet.Bssid, Aps[i].Bssid);
-
-			ApSet.Channel  = Aps[i].Channel;
-			ApSet.Mode     = Aps[i].Mode;
-			ApSet.AuthMode = Aps[i].AuthMode;
-			ApSet.SecMode  = Aps[i].SecMode;
-
-			// WPA/WPA2 senha
-			strcpy(ApSet.KeyUnion.PskKey.Key, password);
-			ApSet.KeyUnion.PskKey.KeyLen = strlen(password);
-
-			ret = OsWifiConnect(&ApSet, 10000);
-
-			if (ret != RET_OK)
-			{
-				OsLog(LOG_DEBUG, "Erro ao conectar = %d", ret);
-
-			}
-
-			OsLog(LOG_DEBUG, "Conectado com sucesso!");
-
-			route = OsNetGetRoute();
-			if (route != NET_LINK_WIFI)
-			{
-				OsNetSetRoute(NET_LINK_WIFI);
-			}
-
-			OsNetStartDhcp(NET_LINK_WIFI);
-
-			OsLog(LOG_DEBUG, "DHCP iniciado");
-			return 0;
-		}
-	}
-	OsLog(LOG_DEBUG, "Rede nao encontrada");
-	return -1;
-}
-
-
-
-int mostrarIP(void)
-{
-    char buffer[256];
-
-    FILE *fp = popen("ifconfig wlan0", "r");
-    if(fp == NULL) {
-        return -1;
-    }
-
-    while(fgets(buffer, sizeof(buffer), fp) != NULL)
-    {
-        char *ptr = strstr(buffer, "inet addr:");
-        if(ptr != NULL) {
-            sscanf(ptr, "inet addr:%31s", ip);
-            break;
-        }
-    }
-
-    pclose(fp);
-
-    if(strlen(ip) == 0) {
-        //strcpy(ip, "no connect");
-    }
-
-    char linha[64];
-    OsLog(LOG_DEBUG,"IP: %s", ip);
-
-    return 0;
-}
-
-
-
-int getFirstFile(char *folder, char *outputPath, size_t outputSize)
-{
-    DIR *dir;
-
-    struct dirent *entry;
-
-    dir = opendir(folder);
-
-    if (dir == NULL)
-    {
-        return 0;
-    }
-
-    while ((entry = readdir(dir)) != NULL)
-    {
-        // Ignora "." e ".."
-        if (strcmp(entry->d_name, ".") == 0 ||
-            strcmp(entry->d_name, "..") == 0)
-        {
-            continue;
-        }
-
-        // Monta caminho completo
-        snprintf(
-            outputPath,
-            outputSize,
-            "%s/%s",
-            folder,
-            entry->d_name
-        );
-
-        // Verifica se é arquivo normal
-        struct stat st;
-
-        if (stat(outputPath, &st) == 0)
-        {
-            if (S_ISREG(st.st_mode))
-            {
-                closedir(dir);
-                return 1;
-            }
-        }
-    }
-
-    closedir(dir);
-
-    return 0;
-}
-
-
-
-int *clientThread(void *arg)
-{
-    XuiColor colorWhite = {0xFF,0xFF,0xFF,0xFF};
-    XuiColor colorBlue = {0xFF,0x00,0x00,0xFF};
-    XuiColor colorGray = {0xBE,0xBE,0xBE,0xFF};
-    XuiColor colorRed = {0x00,0x00,0xFF,0xFF};
-    XuiColor colorBlack = {0x00,0x00,0x00,0xFF};
-    XuiColor colorGreen = {0x00,0xFF,0x00,0xFF};
-
-    XuiFont *font;
-    font = XuiCreateFont("/usr/font/paxfont.ttf",0,0);
-
-    int client_fd = *(int *)arg;
-    free(arg);
-
-    char buffer[1024];
-
-    while (1)
-    {
-        memset(buffer, 0, sizeof(buffer));
-
-        int bytes = recv(client_fd, buffer, sizeof(buffer)-1, 0);
-
-        if (bytes <= 0)
-        {
-            OsLog(LOG_DEBUG, "Cliente desconectado");
-            break;
-        }
-
-        buffer[bytes] = '\0';
-
-        OsLog(LOG_DEBUG, "Recebido: %s", buffer);
-
-        // ==========================================
-        // CRIAR JANELA STATUS
-        // ==========================================
-
-        XuiWindow *layMSG = XuiCreateCanvas( XuiRootCanvas(), 200,ip_y + 200,270,30);
-
-        XuiCanvasDrawRect(layMSG, 0, 0, 270,30,colorGray,0,1);
-        XuiShowWindow(layMSG,1,0);
-
-        // ==========================================
-        // PEGAR SOMENTE O COMANDO
-        // ==========================================
-
-        char command[32];
-
-        memset(command,0,sizeof(command));
-
-        sscanf(buffer, "%31s", command);
-
-        command[strcspn(command, "\r\n")] = 0;
-
-        OsLog(LOG_DEBUG,"Comando: %s",command);
-
-        // ==========================================
-        // DEFINIR PASTA BASE
-        // ==========================================
-
-        char filepath[512];
-
-        if (strcmp(command, "GET_SO") == 0)
-        {
-			if (!getFirstFile("./res/storage/so",filepath,sizeof(filepath)))
-			{
-				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
-
-				send(client_fd,"FILE_NOT_FOUND",23,0);
-				continue;
-			}
-
-			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");
-        }
-        else if (strcmp(command, "GET_FWP") == 0)
-        {
-			if (!getFirstFile("./res/storage/fwp",filepath,sizeof(filepath)))
-			{
-				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
-
-				send(client_fd,"FWP_NOT_FOUND",23,0);
-				continue;
-			}
-
-			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING FWP");
-        }
-        else if (strcmp(command, "GET_BOOT") == 0)
-        {
-			/*if (!getFirstFile("./res/storage/boot",filepath,sizeof(filepath)))
-			{
-				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
-
-				send(client_fd,"FILE_NOT_FOUND",23,0);
-				continue;
-			}
-
-			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");*/
-
-        }        else if (strcmp(command, "GET_APP") == 0)
-        {
-			/*if (!getFirstFile("./res/storage/app",filepath,sizeof(filepath)))
-			{
-				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
-
-				send(client_fd,"FILE_NOT_FOUND",23,0);
-				continue;
-			}
-
-			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");*/
-        }
-
-        else
-        {
-            OsLog(LOG_DEBUG,"Comando desconhecido");
-            XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorRed,"COMMAND ERROR");
-            continue;
-        }
-
-        OsLog(LOG_DEBUG,"Abrindo: %s",filepath);
-
-        FILE *fp = fopen(filepath, "rb");
-
-        if (fp == NULL)
-        {
-            OsLog(LOG_DEBUG,"Arquivo nao encontrado");
-
-            XuiCanvasDrawText(layMSG,130, 0,25,font,XUI_TEXT_BOLD,colorRed,"NOT FOUND");
-
-            send(client_fd,"ERROR FILE_NOT_FOUND\n",23,0);
-            continue;
-        }
-
-        // ==========================================
-        // TAMANHO ARQUIVO
-        // ==========================================
-
-        fseek(fp, 0, SEEK_END);
-
-        long filesize = ftell(fp);
-
-        rewind(fp);
-
-        char header[128];
-
-        sprintf(header,"OK\nSIZE %ld\n",filesize);
-
-        send(client_fd,header, strlen(header),0);
-
-        OsLog(LOG_DEBUG,"Enviando arquivo (%ld bytes)",filesize);
-
-        // ==========================================
-        // ENVIAR ARQUIVO
-        // ==========================================
-
-        char file_buffer[1024];
-
-        int read_bytes;
-
-        while (
-            (read_bytes =fread(file_buffer,1, sizeof(file_buffer),fp) ) > 0
-        )
-        {
-            send(client_fd,file_buffer,read_bytes,0);
-        }
-
-        fclose(fp);
-
-        OsLog(LOG_DEBUG, "Arquivo enviado");
-        XuiCanvasDrawText(layMSG,160,0,25,font,XUI_TEXT_BOLD,colorBlue,"SENT!");
-    }
-
-    close(client_fd);
-    return NULL;
-}
-
-int listenConnect()
-{
-    int server_fd;
-
-    struct sockaddr_in server_addr;
-
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (server_fd < 0)
-    {
-        OsLog(LOG_DEBUG, "Erro ao criar socket");
-
-        return -1;
-    }
-
-    memset(&server_addr, 0, sizeof(server_addr));
-
-    server_addr.sin_family = AF_INET;
-
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-
-    server_addr.sin_port = htons(SERVER_PORT);
-
-    if (bind(server_fd,
-            (struct sockaddr *)&server_addr,
-            sizeof(server_addr)) < 0)
-    {
-        OsLog(LOG_DEBUG, "Erro no bind");
-
-        close(server_fd);
-
-        return -1;
-    }
-
-    if (listen(server_fd, 15) < 0)
-    {
-        OsLog(LOG_DEBUG, "Erro no listen");
-
-        close(server_fd);
-
-        return -1;
-    }
-
-    OsLog(LOG_DEBUG, "Servidor aguardando conexoes...");
-
-    wait_connection(server_fd);
-
-    close(server_fd);
-
-    return 0;
-}
-
 
 int wait_connection(int server_fd)
 {
@@ -540,18 +153,6 @@ int wait_connection(int server_fd)
 	}
 }
 
-
-
-
-
-void *serverThread(void *arg)
-{
-    listenConnect();
-
-    return NULL;
-}
-
-
 int Server(void)
 {
 
@@ -578,9 +179,6 @@ int Server(void)
     XuiShowWindow(layDown,1,0);
     XuiShowWindow(layMSG,1,0);
 
-    // =====================================================
-    // WIFI
-    // =====================================================
     XuiCanvasDrawText(layUp,10,10,30,font,XUI_TEXT_BOLD,colorGray,"MSP");
     XuiCanvasDrawText(layMSG,0,0,30,font,XUI_TEXT_NORMAL,colorWhite,"AWAIT");
 
@@ -673,7 +271,7 @@ int Server(void)
 
     socklen_t client_len;
 
-    //int ip_y = 0;
+    int ip_y = 0;
 
     XuiCanvasDrawText(layConnect,0,0,25,font,XUI_TEXT_NORMAL,colorBlack, "IP connect:");
 
@@ -751,7 +349,7 @@ int Server(void)
 
 int main(int argc, char **argv)
 {
-	OsLogSetTag("[  PSF  ]");
+	OsLogSetTag("[  MSP  ]");
     CrashReportInit();
     GuiInit(18);
     Server();

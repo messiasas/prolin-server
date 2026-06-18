@@ -4,10 +4,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/main.c 
+../src/clientThread.c \
+../src/file_manager.c \
+../src/main.c \
+../src/wifi.c 
 
 OBJS += \
-./src/main.o 
+./src/clientThread.o \
+./src/file_manager.o \
+./src/main.o \
+./src/wifi.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes
