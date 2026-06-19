@@ -100,19 +100,19 @@ int *clientThread(void *arg)
         }
         else if (strcmp(command, "GET_BOOT") == 0)
         {
-			/*if (!getFirstFile("./res/storage/boot",filepath,sizeof(filepath)))
+			if (!getFirstFile("./res/storage/boot",filepath,sizeof(filepath)))
 			{
 				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
 
 				send(client_fd,"FILE_NOT_FOUND",23,0);
 				continue;
 			}
+			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING BOOT");
 
-			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");*/
-
-        }        else if (strcmp(command, "GET_APP") == 0)
+        }
+        else if (strcmp(command, "GET_APP") == 0)
         {
-			/*if (!getFirstFile("./res/storage/app",filepath,sizeof(filepath)))
+			if (!getFirstFile("./res/storage/target",filepath,sizeof(filepath)))
 			{
 				OsLog(LOG_DEBUG,"Nenhum arquivo encontrado");
 
@@ -120,7 +120,7 @@ int *clientThread(void *arg)
 				continue;
 			}
 
-			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING SO");*/
+			XuiCanvasDrawText(layMSG,0,0,25,font,XUI_TEXT_NORMAL,colorBlack,"SENDING TRGT");
         }
 
         else
@@ -180,7 +180,7 @@ int *clientThread(void *arg)
         fclose(fp);
 
         OsLog(LOG_DEBUG, "Arquivo enviado");
-        XuiCanvasDrawText(layMSG,160,0,25,font,XUI_TEXT_BOLD,colorBlue,"SENT!");
+        XuiCanvasDrawText(layMSG,180,0,25,font,XUI_TEXT_BOLD,colorBlue,"SENT!");
     }
 
     close(client_fd);
